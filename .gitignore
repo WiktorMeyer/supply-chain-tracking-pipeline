@@ -1,0 +1,19 @@
+# Virtual environments
+.venv/
+venv/
+
+# IDE settings
+.idea/
+.vscode/
+
+# Environment variables & secrets
+.env
+
+# Python bytecode & test caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local raw JSON test dumps (Milestone 1)
+data/
+*.json
