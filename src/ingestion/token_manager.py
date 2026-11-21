@@ -46,9 +46,10 @@ class TokenManager:
                 },
             )
         except httpx.RequestError as exc:
-            raise classifier.classify_exception(exc) from exc
-        if r.status_code == 401:
-            raise PermanentFetchError("Invalid OpenSky client credentials (401)")
+            raise classify_exception(exc)
+        except AuthRefreshRequiredError:
+            # A 401 on the token endpoint itself means client_id/secret is invalid
+            raise PermanentFetchError("Invalid OpenSky client credentials (401 from token server)")
 
         data = classifier.classify_response(r)
         try:
