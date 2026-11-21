@@ -1,12 +1,9 @@
-import httpx
 import time
-
-from src.ingestion import classifier
-from src.ingestion.exceptions import PermanentFetchError, TransientFetchError
+import httpx
+from src.ingestion.classifier import classify_exception, classify_response
+from src.ingestion.exceptions import AuthRefreshRequiredError, PermanentFetchError
 
 TOKEN_URL = "https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token"
-
-# How many seconds before expiry to proactively refresh the token.
 TOKEN_REFRESH_MARGIN = 30
 
 
@@ -15,29 +12,29 @@ class TokenManager:
         self.client_id = client_id
         self.client_secret = client_secret
         self.client = client
-        self.token = None
-        self.expires_at = None
+        self.token: str | None = None
+        self.expires_at: float | None = None
 
-    def get_token(self):
+    def get_token(self) -> str:
         """Return a valid access token, refreshing automatically if needed."""
         if self.token and self.expires_at and time.monotonic() < self.expires_at:
             return self.token
         return self._refresh()
 
-    def invalidate(self):
-        """Forget the current token"""
+    def invalidate(self) -> None:
+        """Forget the current token."""
         self.token = None
         self.expires_at = None
 
-    def force_refresh(self):
-        """Invalidate the current token and fetch a new one"""
+    def force_refresh(self) -> str:
+        """Invalidate the current token and fetch a new one."""
         self.invalidate()
         return self._refresh()
 
-    def _refresh(self):
+    def _refresh(self) -> str:
         """Fetch a new access token from the OpenSky authentication server."""
         try:
-            r = self.client.post(
+            response = self.client.post(
                 TOKEN_URL,
                 data={
                     "grant_type": "client_credentials",
@@ -45,21 +42,18 @@ class TokenManager:
                     "client_secret": self.client_secret,
                 },
             )
+            data = classify_response(response)
         except httpx.RequestError as exc:
             raise classify_exception(exc)
         except AuthRefreshRequiredError:
             # A 401 on the token endpoint itself means client_id/secret is invalid
             raise PermanentFetchError("Invalid OpenSky client credentials (401 from token server)")
 
-        data = classifier.classify_response(r)
-        try:
-            self.token = data["access_token"]
-        except KeyError as exc:
-            raise TransientFetchError("Missing access_token in OIDC response") from exc
+        self.token = data["access_token"]
         expires_in = data.get("expires_in", 1800)
         self.expires_at = time.monotonic() + (expires_in - TOKEN_REFRESH_MARGIN)
         return self.token
 
-    def headers(self):
+    def headers(self) -> dict[str, str]:
         """Return request headers with a valid Bearer token."""
         return {"Authorization": f"Bearer {self.get_token()}"}
